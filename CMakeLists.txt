@@ -31,6 +31,7 @@ include_directories(${GLFW_INCLUDE_DIRS})
 include_directories(${GLM_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
+<<<<<<< HEAD
 # Add all headers and source files
 file(GLOB SOURCES "src/*.cpp" "include/*.h")
 
@@ -45,6 +46,8 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 		set(CMAKE_CXX_FLAGS "-std=c++11 -fdiagnostics-color=auto")
 	endif()
 endif()
+
+set(CMAKE_CXX_FLAGS "-std=c++11")
 
 set_target_properties(Test PROPERTIES COMPILE_FLAGS "-std=c++11")
 
