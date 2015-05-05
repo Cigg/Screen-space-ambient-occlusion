@@ -1,54 +1,52 @@
-# Source: https://code.google.com/p/assembly3d/source/browse/tools/viewer/cmake_modules/FindGLFW.cmake?r=3169025bb2bcd96ecb67cefb5cdba1ed8b794095
-# Locate the glfw library
-# This module defines the following variables:
-# GLFW_LIBRARY, the name of the library;
-# GLFW_INCLUDE_DIRS, where to find glfw include files.
-# GLFW_FOUND, true if both the GLFW_LIBRARY and GLFW_INCLUDE_DIR have been found.
 #
-# To help locate the library and include file, you could define an environment variable called
-# GLFW_ROOT which points to the root of the glfw library installation. This is pretty useful
-# on a Windows platform.
+# Try to find GLFW library and include path.
+# Once done this will define
 #
+# GLFW_FOUND
+# GLFW_INCLUDE_DIRS
+# GLFW_LIBRARY
 #
-# Usage example to compile an "executable" target to the glfw library:
-#
-# FIND_PACKAGE (glfw REQUIRED)
-# INCLUDE_DIRECTORIES (${GLFW_INCLUDE_DIR})
-# ADD_EXECUTABLE (executable ${EXECUTABLE_SRCS})
-# TARGET_LINK_LIBRARIES (executable ${GLFW_LIBRARY})
-#
-# TODO:
-# Allow the user to select to link to a shared library or to a static library.
 
-#Search for the include file...
-FIND_PATH(GLFW_INCLUDE_DIR GL/glfw.h DOC "Path to GLFW include directory."
-  HINTS
-  $ENV{GLFW_ROOT}
-  PATH_SUFFIX include #For finding the include file under the root of the glfw expanded archive, typically on Windows.
+if(NOT GLFW_FOUND)
+
+FIND_PATH(GLFW_INCLUDE_DIR GLFW/glfw3.h
   PATHS
-  /usr/include/
-  /usr/local/include/
-  # By default headers are under GL subfolder
-  /usr/include/GL
-  /usr/local/include/GL
-  ${GLFW_ROOT_DIR}/include/ # added by ptr
- 
+    ${PROJECT_SOURCE_DIR}/../../external/glfw/include
+    ${PROJECT_SOURCE_DIR}/../external/glfw/include
+    /usr/local/include
+    /usr/X11/include
+    /usr/include
+    /opt/local/include
+    NO_DEFAULT_PATH
+    )
+
+FIND_LIBRARY( GLFW_LIBRARY
+  NAMES glfw glfw3
+  PATHS
+    ${PROJECT_SOURCE_DIR}/../../external/glfw/src
+    ${PROJECT_SOURCE_DIR}/../external/glfw/src
+    ${PROJECT_SOURCE_DIR}/../../external/glfw/lib/x64
+    ${PROJECT_SOURCE_DIR}/../external/glfw/lib/x64
+    /usr/local
+    /usr/X11
+    /usr
+    PATH_SUFFIXES
+    a
+    lib64
+    lib
+    NO_DEFAULT_PATH
 )
 
-FIND_LIBRARY(GLFW_LIBRARY DOC "Absolute path to GLFW library."
-  NAMES glfw3 GLFW3
-  HINTS
-  $ENV{GLFW_ROOT}
-  PATH_SUFFIXES lib/win32 #For finding the library file under the root of the glfw expanded archive, typically on Windows.
-  PATHS
-  /usr/local/lib
-  /usr/lib
-  ${GLFW_ROOT_DIR}/lib-msvc100/release # added by ptr
-)
+SET(GLFW_FOUND "NO")
+IF (GLFW_INCLUDE_DIR AND GLFW_LIBRARY)
+  SET(GLFW_FOUND "YES")
+  SET(GLFW_INCLUDE_DIRS ${GLFW_INCLUDE_DIR})
+ENDIF (GLFW_INCLUDE_DIR AND GLFW_LIBRARY)
 
-SET(GLFW_FOUND 0)
-IF(GLFW_LIBRARY AND GLFW_INCLUDE_DIR)
-  SET(GLFW_FOUND 1)
-  SET(GLFW_INCLUDE_DIRS "${GLFW_INCLUDE_DIR}")
-  message(STATUS "GLFW found!")
-ENDIF(GLFW_LIBRARY AND GLFW_INCLUDE_DIR)
+if(GLFW_FOUND)
+  message(STATUS "Found GLFW: ${GLFW_INCLUDE_DIR}")
+else(GLFW_FOUND)
+  message(FATAL_ERROR "could NOT find GLFW")
+endif(GLFW_FOUND)
+
+endif(NOT GLFW_FOUND)

@@ -3,7 +3,7 @@
 # Once done this will define
 #
 # GLEW_FOUND
-# GLEW_INCLUDE_DIR
+# GLEW_INCLUDE_DIRS
 # GLEW_LIBRARY
 # 
 
