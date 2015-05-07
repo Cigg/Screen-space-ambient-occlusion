@@ -31,7 +31,6 @@ include_directories(${GLFW_INCLUDE_DIRS})
 include_directories(${GLM_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
-<<<<<<< HEAD
 # Add all headers and source files
 file(GLOB SOURCES "src/*.cpp" "include/*.h")
 
