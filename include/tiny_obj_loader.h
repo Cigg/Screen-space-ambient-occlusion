@@ -76,14 +76,14 @@ private:
 /// 'mtl_basepath' is optional, and used for base path for .mtl file.
 std::string LoadObj(std::vector<shape_t> &shapes,       // [output]
                     std::vector<material_t> &materials, // [output]
-                    const char *filename, const char *mtl_basepath = NULL);
+                    const char *filename, const char *mtl_basepath = NULL, float scale = 1.0);
 
 /// Loads object from a std::istream, uses GetMtlIStreamFn to retrieve
 /// std::istream for materials.
 /// Returns empty string when loading .obj success.
 std::string LoadObj(std::vector<shape_t> &shapes,       // [output]
                     std::vector<material_t> &materials, // [output]
-                    std::istream &inStream, MaterialReader &readMatFn);
+                    std::istream &inStream, MaterialReader &readMatFn, float scale = 1.0);
 
 /// Loads materials into std::map
 /// Returns an empty string if successful

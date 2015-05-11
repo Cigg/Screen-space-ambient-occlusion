@@ -618,7 +618,7 @@ std::string MaterialFileReader::operator()(const std::string &matId,
 
 std::string LoadObj(std::vector<shape_t> &shapes,
                     std::vector<material_t> &materials, // [output]
-                    const char *filename, const char *mtl_basepath) {
+                    const char *filename, const char *mtl_basepath, float scale) {
 
   shapes.clear();
 
@@ -636,12 +636,12 @@ std::string LoadObj(std::vector<shape_t> &shapes,
   }
   MaterialFileReader matFileReader(basePath);
 
-  return LoadObj(shapes, materials, ifs, matFileReader);
+  return LoadObj(shapes, materials, ifs, matFileReader, scale);
 }
 
 std::string LoadObj(std::vector<shape_t> &shapes,
                     std::vector<material_t> &materials, // [output]
-                    std::istream &inStream, MaterialReader &readMatFn) {
+                    std::istream &inStream, MaterialReader &readMatFn, float scale) {
   std::stringstream err;
 
   std::vector<float> v;
@@ -695,9 +695,9 @@ std::string LoadObj(std::vector<shape_t> &shapes,
       token += 2;
       float x, y, z;
       parseFloat3(x, y, z, token);
-      v.push_back(x);
-      v.push_back(y);
-      v.push_back(z);
+      v.push_back(x*scale);
+      v.push_back(y*scale);
+      v.push_back(z*scale);
       continue;
     }
 
