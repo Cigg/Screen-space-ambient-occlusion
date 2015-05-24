@@ -11,7 +11,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake/Modules)
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(GLM REQUIRED)
-find_package(SOIL REQUIRED)
+find_package(FreeImagePlus REQUIRED)
 
 # Find GLFW
 if (WIN32)
@@ -30,7 +30,7 @@ else()
 include_directories(${GLEW_INCLUDE_DIRS})
 include_directories(${GLFW_INCLUDE_DIRS})
 include_directories(${GLM_INCLUDE_DIRS})
-include_directories(${SOIL_INCLUDE_DIRS})
+include_directories(${FREEIMAGEPLUS_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
 # Add all headers and source files
@@ -48,10 +48,10 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 	endif()
 endif()
 
-set(CMAKE_CXX_FLAGS "-std=c++11")
+set(CMAKE_CXX_FLAGS "-std=c++11 -g")
 
 set_target_properties(Test PROPERTIES COMPILE_FLAGS "-std=c++11")
 
 # Link all libraries to project
-target_link_libraries(Test ${GLEW_LIBRARY} ${OPENGL_LIBRARIES} ${GLFW_STATIC_LIBRARIES} ${SOIL_LIBRARIES})
+target_link_libraries(Test ${GLEW_LIBRARY} ${OPENGL_LIBRARIES} ${GLFW_STATIC_LIBRARIES} ${FREEIMAGEPLUS_LIBRARIES})
 
