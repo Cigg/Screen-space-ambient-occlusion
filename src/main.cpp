@@ -7,6 +7,8 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <string>
+#include <cstring>
 
 //#include <SOIL.h>
 #include <FreeImagePlus.h>
@@ -14,14 +16,15 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 
-
-#include "controls.h"
 #include "tiny_obj_loader.h"
+#include "controls.h"
 #include "shader.h"
+#include "texture.h"
+#include "gbuffer.h"
 
 using namespace glm;
 
-struct draw_mesh {
+struct DrawMesh {
 	GLuint vertex_array;
 	GLuint vbo_indices;
 	GLuint num_indices;
@@ -33,23 +36,45 @@ struct draw_mesh {
 
 GLFWwindow* window;
 
-unsigned int screenWidth = 1024;
-unsigned int screenHeight = 768;
+unsigned int screenWidth = 1280;
+unsigned int screenHeight = 1024;
+//unsigned int frameBufferSize = 1024;	
 
+// --------------------------------------------------------------------
 // Global "pointer"-variables to OpenGL objects and locations and stuff
-GLuint shader;
+// --------------------------------------------------------------------
+
+// Shader programs
+GLuint geometryShader;
+GLuint lightingShader;
+
+// Geometry shader locations
 GLuint MatrixID;
 GLuint ViewMatrixID;
 GLuint ModelMatrixID;
-GLuint LightPositionID;
-GLuint LightDirectionID;
 GLuint HasTextureMaskID;
-GLuint Texture1ID;
-GLuint Texture2ID;
+GLuint diffuseTextureID;
+GLuint diffuseTextureMaskID;
 
-std::vector<draw_mesh> draw_meshes;
-std::map<int, GLuint> diffuse_textures;
-std::map<int, GLuint> diffuse_masks;
+// Light shader locations
+GLuint worldPositionTextureID;
+GLuint colorTextureID;
+GLuint normalTextureID;
+GLuint depthTextureID;
+GLuint lightDirectionID;
+GLuint eyePositionID;
+GLuint projectionID;
+GLuint inverseProjectionID;
+
+// Render to texture buffer objects
+GLuint quad_vertexbuffer;
+GLuint quad_vertex_array;
+
+// --------------------------------------------------------------------
+GBuffer gbuffer;
+std::vector<DrawMesh> drawMeshes;
+std::map<int, GLuint> diffuseTextures;
+std::map<int, GLuint> diffuseMasks;
 
 void printGLError(GLenum glError) {
 	switch (glError) {
@@ -68,235 +93,6 @@ void printGLError(GLenum glError) {
             std::cout << "Unrecognised GLenum." << std::endl;
             break;
     }
-}
-
-GLuint LoadTGAFile(const char *filename)
-{
-	unsigned char imageTypeCode;
-    short int imageWidth;
-    short int imageHeight;
-    unsigned char bitCount;
-    unsigned char *imageData;
-
-    unsigned char ucharBad;
-    short int sintBad;
-    long imageSize;
-    int colorMode;
-    unsigned char colorSwap;
-
-    // Open the TGA file.
-    FILE *filePtr = fopen(filename, "rb");
-    if (filePtr == NULL) {
-    	printf("%s could not be opened.\n", filename);
-    	return 0;
-    }
-
-    // Read the two first bytes we don't need.
-    fread(&ucharBad, sizeof(unsigned char), 1, filePtr);
-    fread(&ucharBad, sizeof(unsigned char), 1, filePtr);
-
-    // Which type of image gets stored in imageTypeCode.
-    fread(&imageTypeCode, sizeof(unsigned char), 1, filePtr);
-
-    // For our purposes, the type code should be 2 (uncompressed RGB image)
-    // or 3 (uncompressed black-and-white images).
-    if (imageTypeCode != 2 && imageTypeCode != 3)
-    {
-    	printf("%s wrong TGA type.\n", filename);
-        fclose(filePtr);
-        return false;
-    }
-
-    //std::cout << "dataTypeCode: " << (unsigned int)imageTypeCode << std::endl;
-
-    // Read 13 bytes of data we don't need.
-    fread(&sintBad, sizeof(short int), 1, filePtr);
-    fread(&sintBad, sizeof(short int), 1, filePtr);
-    fread(&ucharBad, sizeof(unsigned char), 1, filePtr);
-    fread(&sintBad, sizeof(short int), 1, filePtr);
-    fread(&sintBad, sizeof(short int), 1, filePtr);
-    
-    // Read the image's width and height.
-    fread(&imageWidth, sizeof(short int), 1, filePtr);
-    fread(&imageHeight, sizeof(short int), 1, filePtr);
-    //std::cout << "imageWidth: " << imageWidth << std::endl;
-    //std::cout << "imageHeight: " << imageHeight << std::endl;
-
-    // Read the bit depth.
-    fread(&bitCount, sizeof(unsigned char), 1, filePtr);
-    //std::cout << "bitCount: " << (unsigned int)bitCount << std::endl;
-
-    // Read one byte of data we don't need.
-    fread(&ucharBad, sizeof(unsigned char), 1, filePtr);
-
-    // Color mode -> 3 = BGR, 4 = BGRA.
-    colorMode = bitCount / 8;
-    imageSize = imageWidth * imageHeight * colorMode;
-
-    // Allocate memory for the image data.
-    imageData = (unsigned char*)malloc(sizeof(unsigned char)*imageSize);
-
-    // Read the image data.
-    fread(imageData, sizeof(unsigned char), imageSize, filePtr);
-
-    // Change from BGR to RGB so OpenGL can read the image data.
-    for (int imageIdx = 0; imageIdx < imageSize; imageIdx += colorMode)
-    {
-        colorSwap = imageData[imageIdx];
-        imageData[imageIdx] = imageData[imageIdx + 2];
-        imageData[imageIdx + 2] = colorSwap;
-    }
-
-   	// Everything is in memory now, the file wan be closed
-    fclose(filePtr);
-   
-	// Create one OpenGL texture
-	GLuint textureID;
-	glGenTextures(1, &textureID);
-	
-	// "Bind" the newly created texture : all future texture functions will modify this texture
-	glBindTexture(GL_TEXTURE_2D, textureID);
-
-	// Give the image to OpenGL
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, imageWidth, imageHeight, 0, GL_BGR, GL_UNSIGNED_BYTE, imageData);
-
-   	// OpenGL has now copied the data. Free our own version
-	//delete [] imageData;
-	free(imageData);
-
-	// Poor filtering, or ...
-	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); 
-
-	// ... nice trilinear filtering.
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); 
-	glGenerateMipmap(GL_TEXTURE_2D);
-
-	// Return the ID of the texture we just created
-	return textureID;
-}
-
-// Method to load an image into a texture using the freeimageplus library. Returns the texture ID or dies trying.
-GLuint loadTexture(std::string filenameString, GLenum minificationFilter = GL_LINEAR, GLenum magnificationFilter = GL_LINEAR) {
-    // Get the filename as a pointer to a const char array to play nice with FreeImage
-    const char* filename = filenameString.c_str();
-
-    // Determine the format of the image.
-    // Note: The second paramter ('size') is currently unused, and we should use 0 for it.
-    FREE_IMAGE_FORMAT format = FreeImage_GetFileType(filename , 0);
-
-    // Image not found? Abort! Without this section we get a 0 by 0 image with 0 bits-per-pixel but we don't abort, which
-    // you might find preferable to dumping the user back to the desktop.
-    if (format == -1) {
-        std::cout << "Could not find image: " << filenameString << " - Aborting." << std::endl;
-        return 0;
-    }
-
-    // Found image, but couldn't determine the file format? Try again...
-    if (format == FIF_UNKNOWN)
-    {
-        //std::cout << "Couldn't determine file format - attempting to get from file extension..." << std::endl;
-
-        // ...by getting the filetype from the filename extension (i.e. .PNG, .GIF etc.)
-        // Note: This is slower and more error-prone that getting it from the file itself,
-        // also, we can't use the 'U' (unicode) variant of this method as that's Windows only.
-        format = FreeImage_GetFIFFromFilename(filename);
-
-        // Check that the plugin has reading capabilities for this format (if it's FIF_UNKNOWN,
-        // for example, then it won't have) - if we can't read the file, then we bail out =(
-        if ( !FreeImage_FIFSupportsReading(format) ) {
-            std::cout << "Detected image format cannot be read!" << std::endl;
-            return 0;
-        }
-    }
-
-    // If we're here we have a known image format, so load the image into a bitmap
-    FIBITMAP* bitmap = FreeImage_Load(format, filename);
-
-    // How many bits-per-pixel is the source image?
-    int bitsPerPixel =  FreeImage_GetBPP(bitmap);
-
-    // Convert our image up to 32 bits (8 bits per channel, Red/Green/Blue/Alpha) -
-    // but only if the image is not already 32 bits (i.e. 8 bits per channel).
-    // Note: ConvertTo32Bits returns a CLONE of the image data - so if we
-    // allocate this back to itself without using our bitmap32 intermediate
-    // we will LEAK the original bitmap data
-    FIBITMAP* bitmap32;
-    if (bitsPerPixel == 32) {
-        //std::cout << "Source image has " << bitsPerPixel << " bits per pixel. Skipping conversion." << std::endl;
-        bitmap32 = bitmap;
-    }
-    else {
-        //std::cout << "Source image has " << bitsPerPixel << " bits per pixel. Converting to 32-bit colour." << std::endl;
-        bitmap32 = FreeImage_ConvertTo32Bits(bitmap);
-    }
-
-    // Some basic image info - strip it out if you don't care
-    int imageWidth  = FreeImage_GetWidth(bitmap32);
-    int imageHeight = FreeImage_GetHeight(bitmap32);
-    //std::cout << "Image: " << filenameString << " is size: " << imageWidth << "x" << imageHeight << "." << std::endl;
-
-    // Get a pointer to the texture data as an array of unsigned bytes.
-    // Note: At this point bitmap32 ALWAYS holds a 32-bit colour version of our image - so we get our data from that.
-    // Also, we don't need to delete or delete[] this textureData because it's not on the heap (so attempting to do
-    // so will cause a crash) - just let it go out of scope and the memory will be returned to the stack.
-    GLubyte* textureData = FreeImage_GetBits(bitmap32);
-
-    // Generate a texture ID and bind to it
-    GLuint tempTextureID;
-    glGenTextures(1, &tempTextureID);
-    glBindTexture(GL_TEXTURE_2D, tempTextureID);
-
-    // Construct the texture.
-    // Note: The 'Data format' is the format of the image data as provided by the image library. FreeImage decodes images into
-    // BGR/BGRA format, but we want to work with it in the more common RGBA format, so we specify the 'Internal format' as such.
-    glTexImage2D(GL_TEXTURE_2D,    // Type of texture
-                 0,                // Mipmap level (0 being the top level i.e. full size)
-                 GL_RGBA,          // Internal format
-                 imageWidth,       // Width of the texture
-                 imageHeight,      // Height of the texture,
-                 0,                // Border in pixels
-                 GL_BGRA,          // Data format
-                 GL_UNSIGNED_BYTE, // Type of texture data
-                 textureData);     // The image data to use for this texture
-
-    // Specify our minification and magnification filters
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minificationFilter);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magnificationFilter);
-
-    // If we're using MipMaps, then we'll generate them here.
-    // Note: The glGenerateMipmap call requires OpenGL 3.0 as a minimum.
-    if (minificationFilter == GL_LINEAR_MIPMAP_LINEAR   ||
-        minificationFilter == GL_LINEAR_MIPMAP_NEAREST  ||
-        minificationFilter == GL_NEAREST_MIPMAP_LINEAR  ||
-        minificationFilter == GL_NEAREST_MIPMAP_NEAREST) {
-        glGenerateMipmap(GL_TEXTURE_2D);
-    }
-
-    // Check for OpenGL texture creation errors
-    GLenum glError = glGetError();
-    if(glError) {
-        std::cout << "There was an error loading the texture: "<< filenameString << std::endl;
-        printGLError(glError);
-    }
-
-    // Unload the 32-bit colour bitmap
-    FreeImage_Unload(bitmap32);
-
-    // If we had to do a conversion to 32-bit colour, then unload the original
-    // non-32-bit-colour version of the image data too. Otherwise, bitmap32 and
-    // bitmap point at the same data, and that data's already been free'd, so
-    // don't attempt to free it again! (or we'll crash).
-    if (bitsPerPixel != 32)
-    {
-        FreeImage_Unload(bitmap);
-    }
-
-    // Finally, return the texture ID
-    return tempTextureID;
 }
 
 bool loadObjects(std::vector<tinyobj::shape_t> &shapes,
@@ -360,17 +156,12 @@ bool loadObjects(std::vector<tinyobj::shape_t> &shapes,
 	return true;
 }
 
-draw_mesh initMesh(tinyobj::mesh_t &mesh) { 
-	draw_mesh out;
+DrawMesh initMesh(tinyobj::mesh_t &mesh) { 
+	DrawMesh out;
 
 	glGenVertexArrays(1, &(out.vertex_array));
 	glBindVertexArray(out.vertex_array);
 
-	//std::cout << "size: " mesh.positions.size() << std::endl;
-	// printf("shape[%ld].positions: %ld\n", i, mesh.positions.size());
-	// printf("shape[%ld].indices: %ld\n", i, mesh.indices.size());
-	// printf("shape[%ld].texcoords: %ld\n", i, mesh.texcoords.size());
-	// printf("shape[%ld].normals: %ld\n", i, mesh.normals.size());
 	assert((mesh.positions.size() % 3) == 0);
 
 	// Load VBOs
@@ -401,21 +192,12 @@ draw_mesh initMesh(tinyobj::mesh_t &mesh) {
 	out.num_indices = mesh.indices.size();
 	out.material_id = mesh.material_ids[0];
 
-	// std::cout << "mesh.material_ids.size() = " << mesh.material_ids.size() << std::endl;	
-	// int uniqueMaterial = 1337;
-	// for(size_t i = 0; i < mesh.material_ids.size(); i++) {
-	// 	if(mesh.material_ids[i] != uniqueMaterial) {
-	// 		uniqueMaterial = mesh.material_ids[i];
-	// 		std::cout << "  " << uniqueMaterial << std::endl;
-	// 	}
-	// }
-	
-
 	return out;
 }
 
 bool initGL() {
-	// Initialise GLFW
+	// ------------------------------------------------------------------------------------
+	//
 	if (!glfwInit())
 	{
 		fprintf(stderr, "Failed to initialize GLFW\n");
@@ -446,6 +228,8 @@ bool initGL() {
 	// Ensure we can capture the escape key being pressed below
 	glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
 
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+
 	// Dark blue background
 	glClearColor(0.0f, 0.0f, 0.4f, 0.0f);
 
@@ -456,9 +240,9 @@ bool initGL() {
 	// Cull triangles which normal is not towards the camera
 	glEnable(GL_CULL_FACE);
 
-	// Enable blending
+	// // Enable blending
 	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	// glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	
 	return true;
 }
@@ -468,51 +252,46 @@ void drawScene() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	// Use our shader
-	glUseProgram(shader);
+	glUseProgram(geometryShader);
 
 	// Compute the MVP matrix from keyboard and mouse input
 	computeMatricesFromInputs();
-	glm::mat4 ProjectionMatrix = getProjectionMatrix();
-	glm::mat4 ViewMatrix = getViewMatrix();
-	glm::mat4 ModelMatrix = glm::mat4(1.0);
-	glm::mat4 MVP = ProjectionMatrix * ViewMatrix * ModelMatrix;
+	glm::mat4 projectionMatrix = getProjectionMatrix();
+	glm::mat4 viewMatrix = getViewMatrix();
+	glm::mat4 modelMatrix = glm::mat4(1.0);
+	glm::mat4 MVP = projectionMatrix * viewMatrix * modelMatrix;
 
 	// Send our transformation to the currently bound shader, 
 	// in the "MVP" uniform
 	glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
-	glUniformMatrix4fv(ModelMatrixID, 1, GL_FALSE, &ModelMatrix[0][0]);
-	glUniformMatrix4fv(ViewMatrixID, 1, GL_FALSE, &ViewMatrix[0][0]);
+	glUniformMatrix4fv(ModelMatrixID, 1, GL_FALSE, &modelMatrix[0][0]);
+	glUniformMatrix4fv(ViewMatrixID, 1, GL_FALSE, &viewMatrix[0][0]);
 
-	glm::vec3 lightPos = glm::vec3(7,25, 0);
-	glUniform3f(LightPositionID, lightPos.x, lightPos.y, lightPos.z);
-	glUniform3f(LightDirectionID, 0.0, -1.0, 0.0);
-
-	for(size_t i = 0; i < draw_meshes.size(); i++) {
+	for(size_t i = 0; i < drawMeshes.size(); i++) {
 		// Bind diffuse texture
 		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, diffuse_textures[draw_meshes[i].material_id]); // Get the texture associated with the material_id
-		// Set our "myTextureSampler" sampler to user Texture Unit 0
-		glUniform1i(Texture1ID, 0);
+		// Get the texture associated with the material_id
+		glBindTexture(GL_TEXTURE_2D, diffuseTextures[drawMeshes[i].material_id]);
+		glUniform1i(diffuseTextureID, 0);
 
-		if(diffuse_masks[draw_meshes[i].material_id] != 0) {
+		// Bind diffuse texture mask if the object has one
+		if(diffuseMasks[drawMeshes[i].material_id] != 0) {
 			glUniform1i(HasTextureMaskID, 1);
+			glActiveTexture(GL_TEXTURE1);
+			// Get the texture associated with the material_id
+			glBindTexture(GL_TEXTURE_2D, diffuseMasks[drawMeshes[i].material_id]);
+			glUniform1i(diffuseTextureMaskID, 1);
+		
 		}
 		else {
 			glUniform1i(HasTextureMaskID, 0);	
 		}
 
-		// Bind diffuse texture mask
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, diffuse_masks[draw_meshes[i].material_id]); // Get the texture associated with the material_id
-		// Set our "myTextureSampler" sampler to user Texture Unit 0
-		glUniform1i(Texture2ID, 1);
-	
-
-		glBindVertexArray(draw_meshes[i].vertex_array);
+		glBindVertexArray(drawMeshes[i].vertex_array);
 
 		// 1rst attribute buffer : vertices
 		glEnableVertexAttribArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, draw_meshes[i].vbo_vertices);
+		glBindBuffer(GL_ARRAY_BUFFER, drawMeshes[i].vbo_vertices);
 		glVertexAttribPointer(
 			0,                  // attribute
 			3,                  // size
@@ -524,7 +303,7 @@ void drawScene() {
 
 		// 2nd attribute buffer : UVs
 		glEnableVertexAttribArray(1);
-		glBindBuffer(GL_ARRAY_BUFFER, draw_meshes[i].vbo_texcoords);
+		glBindBuffer(GL_ARRAY_BUFFER, drawMeshes[i].vbo_texcoords);
 		glVertexAttribPointer(
 			1,                                // attribute
 			2,                                // size
@@ -536,7 +315,7 @@ void drawScene() {
 
 		// 3rd attribute buffer : normals
 		glEnableVertexAttribArray(2);
-		glBindBuffer(GL_ARRAY_BUFFER, draw_meshes[i].vbo_normals);
+		glBindBuffer(GL_ARRAY_BUFFER, drawMeshes[i].vbo_normals);
 		glVertexAttribPointer(
 			2,                                // attribute
 			3,                                // size
@@ -547,12 +326,12 @@ void drawScene() {
 		);
 
 		// Index buffer
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, draw_meshes[i].vbo_indices);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, drawMeshes[i].vbo_indices);
 
 		// Draw the triangles !
 		glDrawElements(
 			GL_TRIANGLES,      // mode
-			draw_meshes[i].num_indices,    // count
+			drawMeshes[i].num_indices,    // count
 			GL_UNSIGNED_INT,   // type
 			(void*)0           // element array buffer offset
 		);
@@ -601,7 +380,7 @@ int main(void)
 	}
 
 	for (size_t i = 0; i < shapes.size(); i++) {
-		draw_meshes.push_back(initMesh(shapes[i].mesh));
+		drawMeshes.push_back(initMesh(shapes[i].mesh));
 	}
 
 	for(size_t i = 0; i < materials.size(); i++) {
@@ -614,7 +393,7 @@ int main(void)
 		// Load the image using trilinear filtering via mipmaps for minification and GL_LINEAR for magnification
 		GLuint textureID = loadTexture(path, GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
 		std::cout << "Loading texture with path: " << path.c_str() << ", textureID: " << textureID << std::endl;
-		diffuse_textures[i] = textureID;
+		diffuseTextures[i] = textureID;
 	}
 
 	for(size_t i = 0; i < materials.size(); i++) {
@@ -627,40 +406,67 @@ int main(void)
 			//GLuint textureID = LoadTGAFile(path.c_str());
 			// Load the image using trilinear filtering via mipmaps for minification and GL_LINEAR for magnification
 			GLuint textureID = loadTexture(path, GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
-			diffuse_masks[i] = textureID;
+			diffuseMasks[i] = textureID;
 		}
-
 	}
 
+	std::cout << "Init geometry buffer" << std::endl;
+	// Init geometry buffer (FBO and textures)
+    if (!gbuffer.Init(screenWidth, screenHeight)) {
+        return -1;
+    }
+    std::cout << "Geometry buffer initialized" << std::endl;
+
+
 	// Create and compile our GLSL program from the shaders
-	shader = LoadShaders( "../shaders/StandardShading.vert", "../shaders/StandardShading.frag" );
-	glUseProgram(shader);
+	geometryShader = LoadShaders( "../shaders/GeometryPass.vert", "../shaders/GeometryPass.frag" );
+	glUseProgram(geometryShader);
 
 	// Get a handle for our "MVP" uniform
-	MatrixID = glGetUniformLocation(shader, "MVP");
-	ViewMatrixID = glGetUniformLocation(shader, "V");
-	ModelMatrixID = glGetUniformLocation(shader, "M");
+	MatrixID = glGetUniformLocation(geometryShader, "MVP");
+	ViewMatrixID = glGetUniformLocation(geometryShader, "V");
+	ModelMatrixID = glGetUniformLocation(geometryShader, "M");
 
 	// Get a handle for other uniforms
-	LightPositionID = glGetUniformLocation(shader, "LightPosition_worldspace");
-	LightDirectionID = glGetUniformLocation(shader, "LightDirection_worldspace");
-	HasTextureMaskID = glGetUniformLocation(shader, "HasTextureMask");
+	HasTextureMaskID = glGetUniformLocation(geometryShader, "HasTextureMask");
 	
-	// Get a handle for our "myTextureSampler" uniform
-	Texture1ID  = glGetUniformLocation(shader, "diffuseTexture");
-	Texture2ID  = glGetUniformLocation(shader, "diffuseTextureMask");
+	// Get a handle for our texture uniforms
+	diffuseTextureID  = glGetUniformLocation(geometryShader, "diffuseTexture");
+	diffuseTextureMaskID  = glGetUniformLocation(geometryShader, "diffuseTextureMask");
 
-	// For speed computation
+	// The fullscreen quad's FBO
+	static const GLfloat g_quad_vertex_buffer_data[] = { 
+		-1.0f, -1.0f, 0.0f,
+		 1.0f, -1.0f, 0.0f,
+		-1.0f,  1.0f, 0.0f,
+		-1.0f,  1.0f, 0.0f,
+		 1.0f, -1.0f, 0.0f,
+		 1.0f,  1.0f, 0.0f,
+	};
+
+	glGenBuffers(1, &quad_vertexbuffer);
+	glBindBuffer(GL_ARRAY_BUFFER, quad_vertexbuffer);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(g_quad_vertex_buffer_data), g_quad_vertex_buffer_data, GL_STATIC_DRAW);
+	glGenVertexArrays(1, &quad_vertex_array);
+
+	lightingShader = LoadShaders( "../shaders/LightPass.vert", "../shaders/LightPass.frag" );
+	worldPositionTextureID = glGetUniformLocation(lightingShader, "WorldPositionTexture");
+	colorTextureID = glGetUniformLocation(lightingShader, "ColorTexture");
+	normalTextureID = glGetUniformLocation(lightingShader, "NormalTexture");
+	depthTextureID = glGetUniformLocation(lightingShader, "DepthTexture");
+	lightDirectionID = glGetUniformLocation(lightingShader, "LightDirection_worldspace");
+	eyePositionID = glGetUniformLocation(lightingShader, "EyePosition_worldspace");
+	inverseProjectionID = glGetUniformLocation(lightingShader, "InverseProjectionMatrix");
+	projectionID = glGetUniformLocation(lightingShader, "ProjectionMatrix");
+
+	// For FPS computation
 	double lastTime = glfwGetTime();
 	int fpsCount = 0;
 	int fps = 0;
 
-	
 	// Main loop
 	while (glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS &&
 		   glfwWindowShouldClose(window) == 0) {
-
-		// Draw stuff
 
 		// Measure speed
 		double currentTime = glfwGetTime();
@@ -672,12 +478,58 @@ int main(void)
 			lastTime += 1.0;
 		}
 
+		// Update title with current position and FPS
 		glm::vec3 camPos = getPosition(); 
 		std::string str = "Pos: " + std::to_string(camPos[0]) + "," + std::to_string(camPos[1]) + "," + std::to_string(camPos[2]) +
 						  ". FPS: " + std::to_string(fps);
 		glfwSetWindowTitle(window, str.c_str());
 
+		// ============================== RENDER GEOMETRY TO FRAMEBUFFER ===========================================
+		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		gbuffer.BindForWriting();
 		drawScene();
+
+		// ========================= RENDER TO THE SCREEN ====================================================
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glUseProgram(lightingShader);
+
+		gbuffer.SetReadBuffer(GBuffer::GBUFFER_TEXTURE_TYPE_NORMAL);
+		// glActiveTexture(GL_TEXTURE0);
+		// glBindTexture(GL_TEXTURE_2D, renderedTexture2);
+
+		// SET UNIFORMS
+		glUniform1i(worldPositionTextureID, 0);
+		glUniform1i(colorTextureID, 1);
+		glUniform1i(normalTextureID, 2);
+		glUniform1i(depthTextureID, 3);
+		glUniform3f(lightDirectionID, 0.0, 3.0, 1.0);
+		glUniform3f(eyePositionID, camPos.x, camPos.y, camPos.z);
+
+		glm::mat4 projectionMatrix = getProjectionMatrix();
+		glm::mat4 inverseProjectionMatrix = glm::inverse(projectionMatrix);
+		glUniformMatrix4fv(projectionID, 1, GL_FALSE, &projectionMatrix[0][0]);
+		glUniformMatrix4fv(inverseProjectionID, 1, GL_FALSE, &inverseProjectionMatrix[0][0]);
+
+		// 1rst attribute buffer : vertices
+		glBindVertexArray(quad_vertex_array);
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, quad_vertexbuffer);
+		glVertexAttribPointer(
+			0,                  // attribute 0. No particular reason for 0, but must match the layout in the shader.
+			3,                  // size
+			GL_FLOAT,           // type
+			GL_FALSE,           // normalized?
+			0,                  // stride
+			(void*)0            // array buffer offset
+		);
+
+		// Draw the triangles !
+		glDrawArrays(GL_TRIANGLES, 0, 6); // 2*3 indices starting at 0 -> 2 triangles
+
+		glDisableVertexAttribArray(0);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		// Swap buffers
 		glfwSwapBuffers(window);
@@ -685,22 +537,23 @@ int main(void)
 	}
 
 	// Cleanup VBO and shader
-	for(size_t i = 0; draw_meshes.size(); i++) {
-		glDeleteBuffers(1, &(draw_meshes[i].vbo_vertices));
-		glDeleteBuffers(1, &(draw_meshes[i].vbo_texcoords));
-		glDeleteBuffers(1, &(draw_meshes[i].vbo_normals));
-		glDeleteBuffers(1, &(draw_meshes[i].vbo_normals));
-		glDeleteProgram(shader);
-		glDeleteVertexArrays(1, &(draw_meshes[i].vertex_array));
+	for(size_t i = 0; drawMeshes.size(); i++) {
+		glDeleteBuffers(1, &(drawMeshes[i].vbo_vertices));
+		glDeleteBuffers(1, &(drawMeshes[i].vbo_texcoords));
+		glDeleteBuffers(1, &(drawMeshes[i].vbo_normals));
+		glDeleteBuffers(1, &(drawMeshes[i].vbo_normals));
+		glDeleteProgram(geometryShader);
+		glDeleteVertexArrays(1, &(drawMeshes[i].vertex_array));
+		glDeleteVertexArrays(1, &quad_vertex_array);
 	}
 
 	// Cleanup textures
-	for(size_t i = 0; diffuse_textures.size(); i++) {
-		glDeleteTextures(1, &diffuse_textures[i]);
+	for(size_t i = 0; diffuseTextures.size(); i++) {
+		glDeleteTextures(1, &diffuseTextures[i]);
 	}
 
-	for(size_t i = 0; diffuse_masks.size(); i++) {
-		glDeleteTextures(1, &diffuse_masks[i]);
+	for(size_t i = 0; diffuseMasks.size(); i++) {
+		glDeleteTextures(1, &diffuseMasks[i]);
 	}
 	// Close OpenGL window and terminate GLFW
 	glfwTerminate();
