@@ -3,7 +3,7 @@
 // Interpolated values from the vertex shaders
 in vec2 UV;
 in vec3 Position_worldspace;
-in vec3 Normal_worldspace;
+in vec3 Normal_cameraspace;
 
 // Ouput data
 layout (location = 0) out vec3 WorldPosOut;
@@ -26,10 +26,10 @@ void main() {
 	
 	vec3 LightColor = vec3(1,1,1);
 
-	vec3 n = normalize( Normal_worldspace );
+	vec3 n = normalize( Normal_cameraspace );
 	
 	WorldPosOut = Position_worldspace;
 	DiffuseOut = texture2D( DiffuseTexture, UV ).rgb;
-	NormalOut = n;
+	NormalOut = n * 0.5 + 0.5;
 	TexCoordOut = vec3(UV, 0.0);
 }

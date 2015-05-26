@@ -1,5 +1,8 @@
 #version 330 core
 
+#define KERNEL_SIZE 32
+#define KERNEL_RADIUS 4
+
 in vec2 UV;
 
 out vec4 color;
@@ -14,25 +17,31 @@ uniform vec3 EyePosition_worldspace;
 uniform mat4 ProjectionMatrix;
 uniform mat4 InverseProjectionMatrix;
 
+uniform vec3 SSAOKernel[KERNEL_SIZE];
+uniform vec2 NoiseScale;
+uniform sampler2D NoiseTexture;
+
 float rand(vec2 co) {
     return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
 }
 
-vec3 getViewSpacePosition(vec2 uv) {
+vec4 getViewSpacePosition(vec2 uv) {
     float x = uv.s * 2.0 - 1.0;
     float y = uv.t * 2.0 - 1.0;
-    float z = texture(DepthTexture, uv).r * 2.0 - 1.0;
+    float z = texture(DepthTexture, uv).r;
 
     vec4 pos = InverseProjectionMatrix * vec4(x, y, z, 1.0);
     pos /= pos.w;
 
-    return pos.xyz;
+    return pos;
 }
 
 void main() {
     //vec3 worldPos = texture2D( WorldPositionTexture, UV ).rgb;
     vec3 diffuseColor = texture2D( ColorTexture, UV ).rgb;
-    vec3 normal = texture( NormalTexture, UV ).xyz;
+    vec3 normal = normalize(texture( NormalTexture, UV ).xyz * 2.0 - 1.0);
+    //vec3 normal = texture( NormalTexture, UV ).xyz;
+
     vec3 lightDirection = normalize(LightDirection_worldspace);
     float cosTheta = clamp(dot(normal, lightDirection), 0, 1);
 
@@ -44,41 +53,46 @@ void main() {
 
     // ----------------- Calculate occlusion factor ---------------------
     // Caclulate view space position and normal
-    vec3 viewSpacePosition = getViewSpacePosition(UV);
-    vec3 randomVec = normalize(vec3(rand(UV), rand(UV*0.9), rand(UV*1.1)));
+    vec4 viewSpacePosition = getViewSpacePosition(UV);
+    vec3 randomVec = normalize(texture(NoiseTexture, UV * NoiseScale).xyz);
     vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
     vec3 bitangent = cross(normal, tangent);
     mat3 transformationMatrix = mat3(tangent, bitangent, normal);
 
-    // float occlusion = 0.0;
-    // int kernelSize = 64;
-    // float radius = 4.0;
-    // for(int i = 0; i < kernelSize; ++i) {
-    //     // Get sample position
-    //     vec3 sample = transformationMatrix * vec3(rand(UV + 0.003*i), rand(UV + 0.01095*i), rand(UV + 0.251254*i));
-    //     sample = sample * radius + viewSpacePosition;
+    float occlusion = 0.0;
+    for(int i = 0; i < KERNEL_SIZE; i++) {
+        // Get sample position
+        vec4 samplePoint = vec4(transformationMatrix * SSAOKernel[i], 0.0);
+        samplePoint = samplePoint * KERNEL_RADIUS + viewSpacePosition;
+        float z = samplePoint.z;
 
-    //     // Project sample position;
-    //     vec4 offset = vec4(sample, 1.0);
-    //     offset = ProjectionMatrix * offset;
-    //     offset.xy /= offset.w;
-    //     offset.xy = offset.xy * 0.5 + 0.5;
+        // Project sample position;
+        samplePoint = ProjectionMatrix * samplePoint;
+        samplePoint /= samplePoint.w;
+        vec2 sampleTexCoord = samplePoint.xy * 0.5 + 0.5;
 
-    //     // Get sample depth
-    //     float sampleDepth = texture(DepthTexture, offset.xy).r;
+        // Get sample depth
+        float sampleDepth = texture(DepthTexture, sampleTexCoord).r;
+        // float linearDepth = sampleDepth * 2.0 - 1.0;
+        // float A = ProjectionMatrix[2].z;
+        // float B = ProjectionMatrix[3].z;
+        // float zNear = - B / (1.0 - A);
+        // float zFar  =   B / (1.0 + A);
+        // linearDepth = zNear * zFar / (zFar + zNear - linearDepth * (zFar - zNear));
 
-    //     // // Range check and accumulate
-    //     // float rangeCheck = abs(viewSpacePosition.z - sampleDepth) < radius ? 1.0 : 0.0;
-    //     occlusion += (sampleDepth <= sample.z ? 1.0 : 0.0);
-    // }
+        float delta = samplePoint.z - sampleDepth;
+        
+        float rangeCheck = 1.0;//abs(viewSpacePosition.z - linearDepth) < KERNEL_RADIUS ? 1.0 : 0.0;
+        occlusion += (delta > 0.00001 ? 1.0 : 0.0) * rangeCheck;
+    }
 
-    // occlusion = 1.0 - occlusion / (float(kernelSize) - 1.0);
+    occlusion = 1.0 - (occlusion / float(KERNEL_SIZE));
 
-    //color = vec4(ambientColor + diffuseColor * cosTheta + specularColor * pow(cosAlpha,5), 1.0);
-    //color = vec4(ambientColor + diffuseColor * cosTheta, 1.0);
-    //color = vec4(vec3(occlusion), 1.0);
+    // // color = vec4(ambientColor + diffuseColor * cosTheta + specularColor * pow(cosAlpha,5), 1.0);
+    // // color = vec4(ambientColor + diffuseColor * cosTheta, 1.0);
+    color = vec4(vec3(occlusion), 1.0);
 
-    float depth = texture(DepthTexture, UV).x;
-    depth = depth > 0.9 ? (depth - 0.9)/0.1 : 0;
-    color = vec4(vec3(depth), 1.0);
+    // float depth = texture(DepthTexture, UV).x * 2.0 - 1.0;
+    // depth = depth > 0.9 ? (depth - 0.9)/0.1 : 0;
+    // color = vec4(vec3(depth), 1.0);
 }

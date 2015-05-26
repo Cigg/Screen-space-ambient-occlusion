@@ -22,6 +22,10 @@
 #include "texture.h"
 #include "gbuffer.h"
 
+#define KERNEL_SIZE 32
+#define NOISE_SIZE 4
+#define BLUR_SIZE 4
+
 using namespace glm;
 
 struct DrawMesh {
@@ -38,21 +42,19 @@ GLFWwindow* window;
 
 unsigned int screenWidth = 1280;
 unsigned int screenHeight = 1024;
-//unsigned int frameBufferSize = 1024;	
 
 // --------------------------------------------------------------------
 // Global "pointer"-variables to OpenGL objects and locations and stuff
 // --------------------------------------------------------------------
-
 // Shader programs
 GLuint geometryShader;
 GLuint lightingShader;
 
 // Geometry shader locations
-GLuint MatrixID;
-GLuint ViewMatrixID;
-GLuint ModelMatrixID;
-GLuint HasTextureMaskID;
+GLuint matrixID;
+GLuint viewMatrixID;
+GLuint modelMatrixID;
+GLuint hasTextureMaskID;
 GLuint diffuseTextureID;
 GLuint diffuseTextureMaskID;
 
@@ -65,16 +67,27 @@ GLuint lightDirectionID;
 GLuint eyePositionID;
 GLuint projectionID;
 GLuint inverseProjectionID;
+GLuint ssaoKernelID;
+GLuint noiseTextureID;
+GLuint noiseScaleID;
 
 // Render to texture buffer objects
 GLuint quad_vertexbuffer;
 GLuint quad_vertex_array;
+// ---------------------------------------------------------------------
 
-// --------------------------------------------------------------------
 GBuffer gbuffer;
+// Data structures to store meshes and textures
 std::vector<DrawMesh> drawMeshes;
 std::map<int, GLuint> diffuseTextures;
 std::map<int, GLuint> diffuseMasks;
+
+// Stuff needed to in SSAO
+GLfloat ssaoKernel[3 * KERNEL_SIZE];
+GLfloat ssaoRotationNoise[3 * NOISE_SIZE * NOISE_SIZE];
+GLfloat noiseScale[2];
+GLuint ssaoRotationNoiseTexture;
+
 
 void printGLError(GLenum glError) {
 	switch (glError) {
@@ -93,6 +106,13 @@ void printGLError(GLenum glError) {
             std::cout << "Unrecognised GLenum." << std::endl;
             break;
     }
+}
+
+float randomFloat(float a, float b) {
+    float random = ((float) std::rand()) / (float) RAND_MAX;
+    float diff = b - a;
+    float r = random * diff;
+    return a + r;
 }
 
 bool loadObjects(std::vector<tinyobj::shape_t> &shapes,
@@ -247,13 +267,7 @@ bool initGL() {
 	return true;
 }
 
-void drawScene() {
-	// Clear the screen
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	// Use our shader
-	glUseProgram(geometryShader);
-
+void geometryPass() {
 	// Compute the MVP matrix from keyboard and mouse input
 	computeMatricesFromInputs();
 	glm::mat4 projectionMatrix = getProjectionMatrix();
@@ -263,9 +277,9 @@ void drawScene() {
 
 	// Send our transformation to the currently bound shader, 
 	// in the "MVP" uniform
-	glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
-	glUniformMatrix4fv(ModelMatrixID, 1, GL_FALSE, &modelMatrix[0][0]);
-	glUniformMatrix4fv(ViewMatrixID, 1, GL_FALSE, &viewMatrix[0][0]);
+	glUniformMatrix4fv(matrixID, 1, GL_FALSE, &MVP[0][0]);
+	glUniformMatrix4fv(modelMatrixID, 1, GL_FALSE, &modelMatrix[0][0]);
+	glUniformMatrix4fv(viewMatrixID, 1, GL_FALSE, &viewMatrix[0][0]);
 
 	for(size_t i = 0; i < drawMeshes.size(); i++) {
 		// Bind diffuse texture
@@ -276,7 +290,7 @@ void drawScene() {
 
 		// Bind diffuse texture mask if the object has one
 		if(diffuseMasks[drawMeshes[i].material_id] != 0) {
-			glUniform1i(HasTextureMaskID, 1);
+			glUniform1i(hasTextureMaskID, 1);
 			glActiveTexture(GL_TEXTURE1);
 			// Get the texture associated with the material_id
 			glBindTexture(GL_TEXTURE_2D, diffuseMasks[drawMeshes[i].material_id]);
@@ -284,7 +298,7 @@ void drawScene() {
 		
 		}
 		else {
-			glUniform1i(HasTextureMaskID, 0);	
+			glUniform1i(hasTextureMaskID, 0);	
 		}
 
 		glBindVertexArray(drawMeshes[i].vertex_array);
@@ -344,6 +358,51 @@ void drawScene() {
 	glBindVertexArray(0);
 }
 
+void lightingPass() {
+	// SET UNIFORMS
+	glUniform1i(worldPositionTextureID, 0);
+	glUniform1i(colorTextureID, 1);
+	glUniform1i(normalTextureID, 2);
+	glUniform1i(depthTextureID, 3);
+	glUniform1i(noiseTextureID, 4);
+	glUniform3f(lightDirectionID, 0.0, 3.0, 1.0);
+	glm::vec3 camPos = getPosition(); 
+	glUniform3f(eyePositionID, camPos.x, camPos.y, camPos.z);
+
+	// Pass SSAO stuff to shader
+	glUniform3fv(ssaoKernelID, KERNEL_SIZE, ssaoKernel);
+	glActiveTexture(GL_TEXTURE4);
+	glBindTexture(GL_TEXTURE_2D, ssaoRotationNoiseTexture);
+
+	glUniform2f(noiseScaleID, noiseScale[0], noiseScale[1]);
+
+	glm::mat4 projectionMatrix = getProjectionMatrix();
+	glm::mat4 inverseProjectionMatrix = glm::inverse(projectionMatrix);
+	glUniformMatrix4fv(projectionID, 1, GL_FALSE, &projectionMatrix[0][0]);
+	glUniformMatrix4fv(inverseProjectionID, 1, GL_FALSE, &inverseProjectionMatrix[0][0]);
+
+	// 1rst attribute buffer : vertices
+	glBindVertexArray(quad_vertex_array);
+	glEnableVertexAttribArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, quad_vertexbuffer);
+	glVertexAttribPointer(
+		0,                  // attribute 0. No particular reason for 0, but must match the layout in the shader.
+		3,                  // size
+		GL_FLOAT,           // type
+		GL_FALSE,           // normalized?
+		0,                  // stride
+		(void*)0            // array buffer offset
+	);
+
+	// Draw the triangles !
+	glDrawArrays(GL_TRIANGLES, 0, 6); // 2*3 indices starting at 0 -> 2 triangles
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisableVertexAttribArray(0);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
 int main(void)
 {
 	// Init OpenGL
@@ -355,6 +414,7 @@ int main(void)
 		return -1;
 	}
 
+	// Check for errors
 	GLenum glError = glGetError();
     if(glError) {
         std::cout << "Error after initGL: ";
@@ -362,15 +422,13 @@ int main(void)
     }
 
 	// Initialise the FreeImage library
-	// Note: Flag is whether we should load ONLY local (built-in) libraries, so
-	// false means 'no, use external libraries also', and 'true' means - use built
-	// in libs only, so it's like using the library as a static version of itself.
 	FreeImage_Initialise(true);
 
-	// Load objects
+	// Create vectors to load objects into
 	std::vector<tinyobj::shape_t> shapes;
 	std::vector<tinyobj::material_t> materials;
-
+	
+	// Load objects
 	if(loadObjects(shapes, materials)) {
 		std::cout << "Objects loaded successfully" << std::endl;
 	}
@@ -379,23 +437,25 @@ int main(void)
 		return -1;
 	}
 
+	// Load VBOs
 	for (size_t i = 0; i < shapes.size(); i++) {
 		drawMeshes.push_back(initMesh(shapes[i].mesh));
 	}
 
+	// Load diffuse textures
 	for(size_t i = 0; i < materials.size(); i++) {
 		// Load the texture
 		std::string dir = "../data/crytek-sponza/";
 		std::string tex = materials[i].diffuse_texname;
 		std::replace( tex.begin(), tex.end(), '\\', '/'); // replace all '\' to '/'
 		std::string path =  dir + tex;
-		//GLuint textureID = LoadTGAFile("../data/crytek-sponza/textures/spnza_bricks_a_diff.tga");
 		// Load the image using trilinear filtering via mipmaps for minification and GL_LINEAR for magnification
 		GLuint textureID = loadTexture(path, GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
 		std::cout << "Loading texture with path: " << path.c_str() << ", textureID: " << textureID << std::endl;
 		diffuseTextures[i] = textureID;
 	}
 
+	// Load diffuse texture masks
 	for(size_t i = 0; i < materials.size(); i++) {
 		// Load the texture
 		std::string dir = "../data/crytek-sponza/";
@@ -403,38 +463,45 @@ int main(void)
 		if(tex != "") {
 			std::replace( tex.begin(), tex.end(), '\\', '/'); // replace all '\' to '/'
 			std::string path =  dir + tex;
-			//GLuint textureID = LoadTGAFile(path.c_str());
 			// Load the image using trilinear filtering via mipmaps for minification and GL_LINEAR for magnification
 			GLuint textureID = loadTexture(path, GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR);
 			diffuseMasks[i] = textureID;
 		}
 	}
 
-	std::cout << "Init geometry buffer" << std::endl;
 	// Init geometry buffer (FBO and textures)
     if (!gbuffer.Init(screenWidth, screenHeight)) {
         return -1;
     }
-    std::cout << "Geometry buffer initialized" << std::endl;
 
-
-	// Create and compile our GLSL program from the shaders
+	// Create and compile our GLSL program from the geometry shaders
 	geometryShader = LoadShaders( "../shaders/GeometryPass.vert", "../shaders/GeometryPass.frag" );
 	glUseProgram(geometryShader);
+	// Get uniform locations
+	matrixID = glGetUniformLocation(geometryShader, "MVP");
+	viewMatrixID = glGetUniformLocation(geometryShader, "V");
+	modelMatrixID = glGetUniformLocation(geometryShader, "M");
+	hasTextureMaskID = glGetUniformLocation(geometryShader, "HasTextureMask");
+	diffuseTextureID  = glGetUniformLocation(geometryShader, "DiffuseTexture");
+	diffuseTextureMaskID  = glGetUniformLocation(geometryShader, "DiffuseTextureMask");
 
-	// Get a handle for our "MVP" uniform
-	MatrixID = glGetUniformLocation(geometryShader, "MVP");
-	ViewMatrixID = glGetUniformLocation(geometryShader, "V");
-	ModelMatrixID = glGetUniformLocation(geometryShader, "M");
+	// Create and compile our GLSL program from the lighting shaders
+	lightingShader = LoadShaders( "../shaders/LightPass.vert", "../shaders/LightPass.frag" );
+	// Get uniform locations
+	worldPositionTextureID = glGetUniformLocation(lightingShader, "WorldPositionTexture");
+	colorTextureID = glGetUniformLocation(lightingShader, "ColorTexture");
+	normalTextureID = glGetUniformLocation(lightingShader, "NormalTexture");
+	depthTextureID = glGetUniformLocation(lightingShader, "DepthTexture");
+	lightDirectionID = glGetUniformLocation(lightingShader, "LightDirection_worldspace");
+	eyePositionID = glGetUniformLocation(lightingShader, "EyePosition_worldspace");
+	inverseProjectionID = glGetUniformLocation(lightingShader, "InverseProjectionMatrix");
+	projectionID = glGetUniformLocation(lightingShader, "ProjectionMatrix");
+	ssaoKernelID = glGetUniformLocation(lightingShader, "SSAOKernel");
+	noiseTextureID = glGetUniformLocation(lightingShader, "NoiseTexture");
+	noiseScaleID = glGetUniformLocation(lightingShader, "NoiseScale");
 
-	// Get a handle for other uniforms
-	HasTextureMaskID = glGetUniformLocation(geometryShader, "HasTextureMask");
-	
-	// Get a handle for our texture uniforms
-	diffuseTextureID  = glGetUniformLocation(geometryShader, "diffuseTexture");
-	diffuseTextureMaskID  = glGetUniformLocation(geometryShader, "diffuseTextureMask");
 
-	// The fullscreen quad's FBO
+	// Create a quad and put it in a VBO
 	static const GLfloat g_quad_vertex_buffer_data[] = { 
 		-1.0f, -1.0f, 0.0f,
 		 1.0f, -1.0f, 0.0f,
@@ -449,20 +516,54 @@ int main(void)
 	glBufferData(GL_ARRAY_BUFFER, sizeof(g_quad_vertex_buffer_data), g_quad_vertex_buffer_data, GL_STATIC_DRAW);
 	glGenVertexArrays(1, &quad_vertex_array);
 
-	lightingShader = LoadShaders( "../shaders/LightPass.vert", "../shaders/LightPass.frag" );
-	worldPositionTextureID = glGetUniformLocation(lightingShader, "WorldPositionTexture");
-	colorTextureID = glGetUniformLocation(lightingShader, "ColorTexture");
-	normalTextureID = glGetUniformLocation(lightingShader, "NormalTexture");
-	depthTextureID = glGetUniformLocation(lightingShader, "DepthTexture");
-	lightDirectionID = glGetUniformLocation(lightingShader, "LightDirection_worldspace");
-	eyePositionID = glGetUniformLocation(lightingShader, "EyePosition_worldspace");
-	inverseProjectionID = glGetUniformLocation(lightingShader, "InverseProjectionMatrix");
-	projectionID = glGetUniformLocation(lightingShader, "ProjectionMatrix");
-
 	// For FPS computation
 	double lastTime = glfwGetTime();
 	int fpsCount = 0;
 	int fps = 0;
+
+	// Initialize SSAO kernel and rotation noise
+	std::srand(time(NULL));
+	for(unsigned int i = 0; i < KERNEL_SIZE; i++) {
+		glm::vec3 randVec = glm::vec3( randomFloat(-1.0, 1.0),
+									   randomFloat(-1.0, 1.0),
+									   randomFloat(0.0, 1.0));
+
+		glm::normalize(randVec);
+
+		float scale = float(i/3) / (float)KERNEL_SIZE;
+		scale = 0.1 + scale*scale*0.9;
+
+		randVec *= scale;
+
+		ssaoKernel[i*3] = randVec.x;
+		ssaoKernel[i*3 + 1] = randVec.y;
+		ssaoKernel[i*3 + 2] = randVec.z;
+	}
+
+
+	for(unsigned int i = 0; i < NOISE_SIZE*NOISE_SIZE; i++) {
+		glm::vec3 randVec = glm::vec3( randomFloat(-1.0, 1.0),
+							   		   randomFloat(-1.0, 1.0),
+							   		   0.0);
+		glm::normalize(randVec);
+
+		ssaoRotationNoise[i*3] = randVec.x;
+		ssaoRotationNoise[i*3 + 1] = randVec.y;
+		ssaoRotationNoise[i*3 + 2] = randVec.z;
+	}
+
+	noiseScale[0] = screenWidth / 4;
+	noiseScale[1] = screenHeight / 4;
+
+	// Create SSAO rotation noise texture
+	glGenTextures(1, &ssaoRotationNoiseTexture);
+	glBindTexture(GL_TEXTURE_2D, ssaoRotationNoiseTexture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, NOISE_SIZE, NOISE_SIZE, 0, GL_RGB, GL_FLOAT, ssaoRotationNoise);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glBindTexture(GL_TEXTURE_2D, 0);
 
 	// Main loop
 	while (glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS &&
@@ -484,52 +585,20 @@ int main(void)
 						  ". FPS: " + std::to_string(fps);
 		glfwSetWindowTitle(window, str.c_str());
 
-		// ============================== RENDER GEOMETRY TO FRAMEBUFFER ===========================================
-		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+		// Render geometry to the framebuffer		
 		gbuffer.BindForWriting();
-		drawScene();
+		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glUseProgram(geometryShader);		
+		geometryPass();
 
-		// ========================= RENDER TO THE SCREEN ====================================================
+		// Render to the screen
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		gbuffer.SetReadBuffer(GBuffer::GBUFFER_TEXTURE_TYPE_NORMAL);
+		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		
 		glUseProgram(lightingShader);
 
-		gbuffer.SetReadBuffer(GBuffer::GBUFFER_TEXTURE_TYPE_NORMAL);
-		// glActiveTexture(GL_TEXTURE0);
-		// glBindTexture(GL_TEXTURE_2D, renderedTexture2);
-
-		// SET UNIFORMS
-		glUniform1i(worldPositionTextureID, 0);
-		glUniform1i(colorTextureID, 1);
-		glUniform1i(normalTextureID, 2);
-		glUniform1i(depthTextureID, 3);
-		glUniform3f(lightDirectionID, 0.0, 3.0, 1.0);
-		glUniform3f(eyePositionID, camPos.x, camPos.y, camPos.z);
-
-		glm::mat4 projectionMatrix = getProjectionMatrix();
-		glm::mat4 inverseProjectionMatrix = glm::inverse(projectionMatrix);
-		glUniformMatrix4fv(projectionID, 1, GL_FALSE, &projectionMatrix[0][0]);
-		glUniformMatrix4fv(inverseProjectionID, 1, GL_FALSE, &inverseProjectionMatrix[0][0]);
-
-		// 1rst attribute buffer : vertices
-		glBindVertexArray(quad_vertex_array);
-		glEnableVertexAttribArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, quad_vertexbuffer);
-		glVertexAttribPointer(
-			0,                  // attribute 0. No particular reason for 0, but must match the layout in the shader.
-			3,                  // size
-			GL_FLOAT,           // type
-			GL_FALSE,           // normalized?
-			0,                  // stride
-			(void*)0            // array buffer offset
-		);
-
-		// Draw the triangles !
-		glDrawArrays(GL_TRIANGLES, 0, 6); // 2*3 indices starting at 0 -> 2 triangles
-
-		glDisableVertexAttribArray(0);
-
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		lightingPass();
 
 		// Swap buffers
 		glfwSwapBuffers(window);
