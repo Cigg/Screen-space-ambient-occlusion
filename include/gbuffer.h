@@ -18,7 +18,7 @@ public:
         GBUFFER_TEXTURE_TYPE_POSITION,
         GBUFFER_TEXTURE_TYPE_DIFFUSE,
         GBUFFER_TEXTURE_TYPE_NORMAL,
-        GBUFFER_TEXTURE_TYPE_TEXCOORD,
+        // GBUFFER_TEXTURE_TYPE_TEXCOORD,
         GBUFFER_NUM_TEXTURES
     };
     
@@ -32,7 +32,7 @@ public:
    
     void BindForReading();  
     
-    void SetReadBuffer(GBUFFER_TEXTURE_TYPE TextureType);
+    void BindTextures();
 
 private:
     GLuint frameBuffer;

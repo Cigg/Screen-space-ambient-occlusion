@@ -14,7 +14,6 @@ layout (location = 3) out vec3 TexCoordOut;
 // Values that stay constant for the whole mesh.
 uniform sampler2D DiffuseTexture;
 uniform sampler2D DiffuseTextureMask;
-uniform mat4 MV;
 uniform vec3 LightPosition_worldspace;
 uniform int HasTextureMask; // 1 = true, 0 = false
 

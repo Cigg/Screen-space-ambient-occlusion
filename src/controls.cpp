@@ -25,6 +25,15 @@ float initialFoV = 45.0f;
 float speed = 3.0f; // 3 units / second
 float mouseSpeed = 0.005f;
 
+enum SSAO_STATUS {
+	SSAO_OFF,
+	SSAO_ON
+};
+
+int ssaoStatus = SSAO_OFF;
+
+bool isPressed = false;
+
 glm::mat4 getViewMatrix(){
 	return ViewMatrix;
 }
@@ -33,6 +42,10 @@ glm::mat4 getProjectionMatrix(){
 }
 glm::vec3 getPosition() {
 	return position;
+}
+
+int isSSAOOn() {
+	return ssaoStatus;
 }
 
 void computeMatricesFromInputs(){
@@ -90,6 +103,17 @@ void computeMatricesFromInputs(){
 	// Strafe left
 	if (glfwGetKey( window, GLFW_KEY_A ) == GLFW_PRESS){
 		position -= right * deltaTime * speed;
+	}
+	// Turn off/on SSAO
+	if (glfwGetKey( window, GLFW_KEY_O ) == GLFW_PRESS && !isPressed){
+		isPressed = true;
+		if(ssaoStatus == SSAO_ON)
+			ssaoStatus = SSAO_OFF;
+		else
+			ssaoStatus = SSAO_ON;
+	}
+	if (glfwGetKey( window, GLFW_KEY_O ) == GLFW_RELEASE) {
+		isPressed = false;
 	}
 
 	float FoV = initialFoV;

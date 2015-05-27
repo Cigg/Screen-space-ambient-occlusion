@@ -54,7 +54,7 @@ bool GBuffer::Init(unsigned int screenWidth, unsigned int screenHeight)
     // Depth texture
     glGenTextures(1, &depthTexture);
     glBindTexture(GL_TEXTURE_2D, depthTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, screenWidth, screenHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, screenWidth, screenHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -63,9 +63,7 @@ bool GBuffer::Init(unsigned int screenWidth, unsigned int screenHeight)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_R_TO_TEXTURE);
     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
 
-
     GLenum Status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-
     if (Status != GL_FRAMEBUFFER_COMPLETE) {
         printf("FB error, status: 0x%x\n", Status);
         return false;
@@ -73,39 +71,6 @@ bool GBuffer::Init(unsigned int screenWidth, unsigned int screenHeight)
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     return true;
-
- //    // Create the FBO
- //    glGenFramebuffers(1, &m_fbo);    
-	// glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
-
- //    // Create the gbuffer textures
- //    glGenTextures(ARRAY_SIZE_IN_ELEMENTS(m_textures), m_textures);
-	// glGenTextures(1, &m_depthTexture);
-    
- //    for (unsigned int i = 0 ; i < ARRAY_SIZE_IN_ELEMENTS(m_textures) ; i++) {
- //    	glBindTexture(GL_TEXTURE_2D, m_textures[i]);
- //        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, WindowWidth, WindowHeight, 0, GL_RGB, GL_FLOAT, NULL);
- //        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
- //        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
- //        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, m_textures[i], 0);
- //    }
-
-	// // depth
-	// glBindTexture(GL_TEXTURE_2D, m_depthTexture);
-	// glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, WindowWidth, WindowHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-	// glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, m_depthTexture, 0);
-
- //    GLenum Status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-
- //    if (Status != GL_FRAMEBUFFER_COMPLETE) {
- //        printf("FB error, status: 0x%x\n", Status);
- //        return false;
- //    }
-
-	// // restore default FBO
-	// glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
- //    return true;
 }
 
 void GBuffer::BindForWriting()
@@ -114,8 +79,9 @@ void GBuffer::BindForWriting()
 
     GLenum DrawBuffers[] = { GL_COLOR_ATTACHMENT0,
                              GL_COLOR_ATTACHMENT1,
-                             GL_COLOR_ATTACHMENT2,
-                             GL_COLOR_ATTACHMENT3 };
+                             GL_COLOR_ATTACHMENT2
+                             // GL_COLOR_ATTACHMENT3 
+                         };
 
     glDrawBuffers(ARRAY_SIZE_IN_ELEMENTS(DrawBuffers), DrawBuffers);
 }
@@ -127,17 +93,17 @@ void GBuffer::BindForReading()
 }
 
 
-void GBuffer::SetReadBuffer(GBUFFER_TEXTURE_TYPE TextureType)
+void GBuffer::BindTextures()
 {
-    //glReadBuffer(GL_COLOR_ATTACHMENT0);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, textures[GBUFFER_TEXTURE_TYPE_POSITION]);
+    // glActiveTexture(GL_TEXTURE0);
+    // glBindTexture(GL_TEXTURE_2D, textures[GBUFFER_TEXTURE_TYPE_POSITION]);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, textures[GBUFFER_TEXTURE_TYPE_DIFFUSE]);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, textures[GBUFFER_TEXTURE_TYPE_NORMAL]);
     glActiveTexture(GL_TEXTURE3);
     glBindTexture(GL_TEXTURE_2D, depthTexture);
+
 }
 
 

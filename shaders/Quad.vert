@@ -3,8 +3,8 @@
 // Input vertex data, different for all executions of this shader.
 layout(location = 0) in vec3 VertexPosition_modelspace;
 
-// Output data ; will be interpolated for each fragment.
-out vec2 UV;
+// Not interpolated texture coordinates
+noperspective out vec2 UV;
 
 void main(){
 	gl_Position =  vec4(VertexPosition_modelspace,1);
