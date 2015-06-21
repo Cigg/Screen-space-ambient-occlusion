@@ -85,6 +85,7 @@ GLuint light_ssaoTextureID;
 GLuint light_lightDirectionID;
 GLuint light_eyePositionID;
 GLuint light_inverseViewMatrixID;
+GLuint light_useTexture;
 
 // Render to texture buffer objects
 GLuint ssaoFrameBuffer;
@@ -388,6 +389,7 @@ void lightingPass() {
 	glUniform3f(light_lightDirectionID, 0.0, 3.0, 1.0);
 	glm::vec3 camPos = getPosition(); 
 	glUniform3f(light_eyePositionID, camPos.x, camPos.y, camPos.z);
+	glUniform1f(light_useTexture, isTexturesEnabled());
 
 	glActiveTexture(GL_TEXTURE4);
 	glBindTexture(GL_TEXTURE_2D, blurTexture);
@@ -433,7 +435,7 @@ void ssaoPass() {
 	glUniformMatrix4fv(ssao_inverseProjectionID, 1, GL_FALSE, &inverseProjectionMatrix[0][0]);
 	glUniform1i(ssao_kernelSize, KERNEL_SIZE);
 	glUniform1i(ssao_kernelRadius, KERNEL_RADIUS);
-	glUniform1f(ssao_isTurnedOn, isSSAOOn());
+	glUniform1f(ssao_isTurnedOn, isSSAOEnabled());
 
 	glActiveTexture(GL_TEXTURE4);
 	glBindTexture(GL_TEXTURE_2D, ssaoRotationNoiseTexture);
@@ -603,6 +605,7 @@ int main(void)
 	light_lightDirectionID = glGetUniformLocation(lightingShader, "LightDirection_worldspace");
 	light_eyePositionID = glGetUniformLocation(lightingShader, "EyePosition_worldspace");
 	light_inverseViewMatrixID = glGetUniformLocation(lightingShader, "InverseViewMatrix");
+	light_useTexture = glGetUniformLocation(lightingShader, "UseTexture");
 
 	// Create a framebuffer and texture for the SSAO pass
 	glGenFramebuffers(1, &ssaoFrameBuffer);
