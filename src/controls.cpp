@@ -25,14 +25,21 @@ float initialFoV = 45.0f;
 float speed = 3.0f; // 3 units / second
 float mouseSpeed = 0.005f;
 
-enum SSAO_STATUS {
+enum SSAO_ENABLED {
 	SSAO_OFF,
 	SSAO_ON
 };
 
-int ssaoStatus = SSAO_OFF;
+enum TEXTURES_ENABLED {
+	TEXTURES_OFF,
+	TEXTURES_ON
+};
 
-bool isPressed = false;
+int ssaoEnabled = SSAO_OFF;
+int texturesEnabled = TEXTURES_ON;
+
+bool isPressed1 = false;
+bool isPressed2 = false;
 
 glm::mat4 getViewMatrix(){
 	return ViewMatrix;
@@ -44,10 +51,13 @@ glm::vec3 getPosition() {
 	return position;
 }
 
-int isSSAOOn() {
-	return ssaoStatus;
+int isSSAOEnabled() {
+	return ssaoEnabled;
 }
 
+int isTexturesEnabled() {
+	return texturesEnabled;
+}
 void computeMatricesFromInputs(){
 
 	unsigned int screenWidth = 1024;
@@ -105,15 +115,26 @@ void computeMatricesFromInputs(){
 		position -= right * deltaTime * speed;
 	}
 	// Turn off/on SSAO
-	if (glfwGetKey( window, GLFW_KEY_O ) == GLFW_PRESS && !isPressed){
-		isPressed = true;
-		if(ssaoStatus == SSAO_ON)
-			ssaoStatus = SSAO_OFF;
+	if (glfwGetKey( window, GLFW_KEY_O ) == GLFW_PRESS && !isPressed1){
+		isPressed1 = true;
+		if(ssaoEnabled == SSAO_ON)
+			ssaoEnabled = SSAO_OFF;
 		else
-			ssaoStatus = SSAO_ON;
+			ssaoEnabled = SSAO_ON;
 	}
 	if (glfwGetKey( window, GLFW_KEY_O ) == GLFW_RELEASE) {
-		isPressed = false;
+		isPressed1 = false;
+	}
+	// Turn off/on texture rendering
+	if (glfwGetKey( window, GLFW_KEY_T ) == GLFW_PRESS && !isPressed2){
+		isPressed2 = true;
+		if(texturesEnabled == TEXTURES_ON)
+			texturesEnabled = TEXTURES_OFF;
+		else
+			texturesEnabled = TEXTURES_ON;
+	}
+	if (glfwGetKey( window, GLFW_KEY_T ) == GLFW_RELEASE) {
+		isPressed2 = false;
 	}
 
 	float FoV = initialFoV;
