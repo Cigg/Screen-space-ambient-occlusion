@@ -9,6 +9,7 @@
 #include <fstream>
 #include <string>
 #include <cstring>
+#include <time.h>
 
 //#include <SOIL.h>
 #include <FreeImagePlus.h>
