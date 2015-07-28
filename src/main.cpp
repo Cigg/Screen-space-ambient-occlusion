@@ -251,7 +251,7 @@ bool initGL() {
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 	// Open a window and create its OpenGL context
-	window = glfwCreateWindow(screenWidth, screenHeight, "Test", NULL, NULL);
+	window = glfwCreateWindow(screenWidth, screenHeight, "SSAO", NULL, NULL);
 	if (window == NULL){
 		fprintf(stderr, "Failed to open GLFW window.\n");
 		glfwTerminate();
@@ -710,13 +710,25 @@ int main(void)
 			fps = fpsCount;
 			fpsCount = 0;
 			lastTime += 1.0;
+
+			// Updating the title every frame can be bad for the FPS on linux
+			// Print positiong and FPS in the console instead 
+			#ifdef __linux__
+				// Update title with current position and FPS
+				glm::vec3 camPos = getPosition(); 
+				std::string str = "Pos: " + std::to_string(camPos[0]) + "," + std::to_string(camPos[1]) + "," + std::to_string(camPos[2]) +
+								  ". FPS: " + std::to_string(fps);
+				std::cout << str << std::endl;					
+			#endif
 		}
 
-		// Update title with current position and FPS
-		glm::vec3 camPos = getPosition(); 
-		std::string str = "Pos: " + std::to_string(camPos[0]) + "," + std::to_string(camPos[1]) + "," + std::to_string(camPos[2]) +
-						  ". FPS: " + std::to_string(fps);
-		glfwSetWindowTitle(window, str.c_str());
+		#ifndef __linux__
+			// Update title with current position and FPS
+			glm::vec3 camPos = getPosition(); 
+			std::string str = "Pos: " + std::to_string(camPos[0]) + "," + std::to_string(camPos[1]) + "," + std::to_string(camPos[2]) +
+							  ". FPS: " + std::to_string(fps);
+			glfwSetWindowTitle(window, str.c_str());
+		#endif
 
 		// Render geometry to the framebuffer		
 		gbuffer.BindForWriting();

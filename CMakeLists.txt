@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 
 # Set project name
-set(PROJECT_NAME Test)
+set(PROJECT_NAME SSAO)
 project(${PROJECT_NAME})
 
 # Add path to custom modules (GLFW GLEW GLM SOIL)
@@ -37,7 +37,7 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 file(GLOB SOURCES "src/*.cpp" "include/*.h")
 
 # Add executable
-add_executable(Test ${SOURCES})
+add_executable(SSAO ${SOURCES})
 
 # Set compiler flags
 set(CMAKE_CXX_FLAGS "-std=c++11")
@@ -50,8 +50,8 @@ endif()
 
 set(CMAKE_CXX_FLAGS "-std=c++11 -g")
 
-set_target_properties(Test PROPERTIES COMPILE_FLAGS "-std=c++11")
+set_target_properties(SSAO PROPERTIES COMPILE_FLAGS "-std=c++11")
 
 # Link all libraries to project
-target_link_libraries(Test ${GLEW_LIBRARY} ${OPENGL_LIBRARIES} ${GLFW_STATIC_LIBRARIES} ${FREEIMAGEPLUS_LIBRARIES})
+target_link_libraries(SSAO ${GLEW_LIBRARY} ${OPENGL_LIBRARIES} ${GLFW_STATIC_LIBRARIES} ${FREEIMAGEPLUS_LIBRARIES})
 
