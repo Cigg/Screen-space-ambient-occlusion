@@ -732,7 +732,7 @@ int main(void)
 
 		// Render geometry to the framebuffer		
 		gbuffer.BindForWriting();
-		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glUseProgram(geometryShader);		
 		geometryPass();
 
@@ -741,7 +741,8 @@ int main(void)
 
 		// Render ssao texture
 		glBindFramebuffer(GL_FRAMEBUFFER, ssaoFrameBuffer);
-		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		//glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		ssaoPass();
 
 		// Render blurred ssao texture
@@ -759,25 +760,26 @@ int main(void)
 		glfwPollEvents();
 	}
 
-	// Cleanup VBO and shader
-	for(size_t i = 0; drawMeshes.size(); i++) {
-		glDeleteBuffers(1, &(drawMeshes[i].vbo_vertices));
-		glDeleteBuffers(1, &(drawMeshes[i].vbo_texcoords));
-		glDeleteBuffers(1, &(drawMeshes[i].vbo_normals));
-		glDeleteBuffers(1, &(drawMeshes[i].vbo_normals));
-		glDeleteProgram(geometryShader);
-		glDeleteVertexArrays(1, &(drawMeshes[i].vertex_array));
-		glDeleteVertexArrays(1, &quadVertexArray);
-	}
+	//// Cleanup VBO and shader
+	//for(size_t i = 0; drawMeshes.size(); i++) {
+	//	glDeleteBuffers(1, &(drawMeshes[i].vbo_vertices));
+	//	glDeleteBuffers(1, &(drawMeshes[i].vbo_texcoords));
+	//	glDeleteBuffers(1, &(drawMeshes[i].vbo_normals));
+	//	glDeleteBuffers(1, &(drawMeshes[i].vbo_normals));
+	//	glDeleteProgram(geometryShader);
+	//	glDeleteVertexArrays(1, &(drawMeshes[i].vertex_array));
+	//	glDeleteVertexArrays(1, &quadVertexArray);
+	//}
 
 	// Cleanup textures
-	for(size_t i = 0; diffuseTextures.size(); i++) {
+	for (size_t i = 0; i < diffuseTextures.size(); i++) {
 		glDeleteTextures(1, &diffuseTextures[i]);
 	}
 
-	for(size_t i = 0; diffuseMasks.size(); i++) {
+	for(size_t i = 0; i < diffuseMasks.size(); i++) {
 		glDeleteTextures(1, &diffuseMasks[i]);
 	}
+
 	// Close OpenGL window and terminate GLFW
 	glfwTerminate();
 
