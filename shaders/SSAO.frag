@@ -2,7 +2,7 @@
 
 #define MAX_KERNEL_SIZE 128
 
-noperspective in vec2 UV;
+in vec2 UV;
 
 out vec4 color;
 
@@ -62,7 +62,7 @@ void main() {
             float linearDepth = getViewSpacePosition(sampleTexCoord).z;
             float rangeCheck = abs(viewSpacePosition.z - linearDepth) < KernelRadius ? 1.0 : 0.0;
 
-            // Contribute to occlusion if within radius and larger than a small number to prevent crazy artifactsZ
+            // Contribute to occlusion if within radius and larger than a small number to prevent crazy artifacts
             occlusion += (delta > 0.00005 ? 1.0 : 0.0) * rangeCheck;
         }
 

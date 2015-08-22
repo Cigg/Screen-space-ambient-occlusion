@@ -76,6 +76,8 @@ GLuint ssao_isTurnedOn;
 // Blur shader locations
 GLuint blur_ssaoTextureID;
 GLuint blur_blurSizeID;
+GLuint blur_screenSizeID;
+GLuint blur_depthTextureID;
 
 // Light shader locations
 GLuint light_worldPositionTextureID;
@@ -87,6 +89,7 @@ GLuint light_lightDirectionID;
 GLuint light_eyePositionID;
 GLuint light_inverseViewMatrixID;
 GLuint light_useTexture;
+GLuint light_screenSizeID;
 
 // Render to texture buffer objects
 GLuint ssaoFrameBuffer;
@@ -391,6 +394,7 @@ void lightingPass() {
 	glm::vec3 camPos = getPosition(); 
 	glUniform3f(light_eyePositionID, camPos.x, camPos.y, camPos.z);
 	glUniform1f(light_useTexture, isTexturesEnabled());
+	glUniform2f(light_screenSizeID, screenWidth, screenHeight);
 
 	glActiveTexture(GL_TEXTURE4);
 	glBindTexture(GL_TEXTURE_2D, blurTexture);
@@ -467,7 +471,9 @@ void blurPass() {
 	glUseProgram(blurShader);
 
 	// SET UNIFORMS
+	glUniform1i(blur_depthTextureID, 3);
 	glUniform1i(blur_ssaoTextureID, 4);
+	glUniform2f(blur_screenSizeID, screenWidth, screenHeight);
 	glUniform1f(blur_blurSizeID, BLUR_SIZE);
 	
 	glActiveTexture(GL_TEXTURE4);
@@ -594,6 +600,8 @@ int main(void)
 	// Get uniform locations
 	blur_ssaoTextureID = glGetUniformLocation(blurShader, "SSAOTexture");
 	blur_blurSizeID = glGetUniformLocation(blurShader, "BlurSize");
+	blur_screenSizeID = glGetUniformLocation(blurShader, "ScreenSize");
+	blur_depthTextureID = glGetUniformLocation(blurShader, "DepthTexture");
 
 	// Create and compile our GLSL program from the lighting shaders
 	lightingShader = LoadShaders("../shaders/Quad.vert", "../shaders/LightPass.frag");
@@ -607,6 +615,7 @@ int main(void)
 	light_eyePositionID = glGetUniformLocation(lightingShader, "EyePosition_worldspace");
 	light_inverseViewMatrixID = glGetUniformLocation(lightingShader, "InverseViewMatrix");
 	light_useTexture = glGetUniformLocation(lightingShader, "UseTexture");
+	light_screenSizeID = glGetUniformLocation(lightingShader, "ScreenSize");
 
 	// Create a framebuffer and texture for the SSAO pass
 	glGenFramebuffers(1, &ssaoFrameBuffer);
@@ -614,10 +623,8 @@ int main(void)
     glGenTextures(1, &ssaoTexture);
 	glBindTexture(GL_TEXTURE_2D, ssaoTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, screenWidth, screenHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, ssaoTexture, 0);
 
     // Create a framebuffer and texture for the blur pass
@@ -628,8 +635,6 @@ int main(void)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, screenWidth, screenHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, blurTexture, 0);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);

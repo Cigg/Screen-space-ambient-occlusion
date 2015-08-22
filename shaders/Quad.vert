@@ -4,7 +4,7 @@
 layout(location = 0) in vec3 VertexPosition_modelspace;
 
 // Not interpolated texture coordinates
-noperspective out vec2 UV;
+out vec2 UV;
 
 void main(){
 	gl_Position =  vec4(VertexPosition_modelspace,1);
